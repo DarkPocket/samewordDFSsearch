@@ -1,8 +1,0 @@
-#######
-#oxx-o#
-#ooxoo#
-##oxo##
-##oxo##
-#ooxoo#
-#-xxxo#
-#######

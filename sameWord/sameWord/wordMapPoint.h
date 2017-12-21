@@ -37,6 +37,7 @@ public:
 	std::vector<wordMapPoint> walkWay; //行走路线
 
 	std::vector<std::string> walkDirect; //行走方向
+	std::vector<int > walkDirectNum;
 	//wordMapPoint & operator=(const wordMapStartPoint &t1) {
 	//	ptColour = t1.ptColour;
 	//	ptAttrib = t1.ptAttrib;

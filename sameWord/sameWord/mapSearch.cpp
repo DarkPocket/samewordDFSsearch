@@ -2,12 +2,28 @@
 #include "mapSearch.h"
 
 const int bufferLen = 256;
-mapSearch::mapSearch()
+bool g_stop_run = false;
+CSem semThread;
+
+
+void copyVector(std::vector<std::vector<wordMapPoint>> &srcVec, std::vector<std::vector<wordMapPoint>> &destVec)
 {
+	vector<std::vector<wordMapPoint>>().swap(destVec);
+
+	for (int i = 0; i < srcVec.size(); ++i)
+	{
+		std::vector<wordMapPoint> tempMap;
+		for (int j = 0; j < srcVec[0].size(); ++j)
+		{
+			tempMap.push_back(srcVec[i][j]);
+		}
+		destVec.push_back(tempMap);
+	}
 }
 
 
-void mapSearch::readTxtMap(std::string mapFileName)
+
+void readTxtMap(std::string mapFileName, std::vector<std::vector<wordMapPoint>> &srcSameWordMap)
 {
 	std::ifstream mapFile(mapFileName.c_str(), std::ios::in);
 
@@ -22,8 +38,8 @@ void mapSearch::readTxtMap(std::string mapFileName)
 	int i = 0;
 	while (!mapFile.eof())
 	{
-		mapFile >> buffer;
 		if (mapFile.eof()) break;
+		mapFile >> buffer;
 
 		mapContent = buffer;
 		std::vector<wordMapPoint> wordMapRow;
@@ -62,11 +78,259 @@ void mapSearch::readTxtMap(std::string mapFileName)
 			wordMapRow.push_back(wordMap);
 		}
 		i++;
-		sameWordMap.push_back(wordMapRow);
+		srcSameWordMap.push_back(wordMapRow);
+	}
+	mapFile.close();
+}
+
+
+
+void writeTxtMap(std::string mapFileName, std::vector<std::vector<wordMapPoint>> &srcSameWordMap)
+{
+	std::ofstream mapFile(mapFileName.c_str(), std::ios::out);
+
+	if (!mapFile.is_open())
+	{
+		std::cout << "error " << mapFileName.c_str() << std::endl;
+		mapFile.close();
+	}
+
+	for (int i = 0; i < srcSameWordMap.size(); ++i)
+	{
+		for (int j = 0; j < srcSameWordMap[i].size(); ++j)
+		{
+			mapFile << srcSameWordMap[i][j].letter;
+		}
+		if (i < srcSameWordMap.size() - 1)
+		{
+			mapFile << std::endl;
+		}
+	}
+	mapFile.close();
+}
+
+void writeString2Txt(std::string mapFileName, std::string &buf)
+{
+	//每次启动删除以前内容  新内容追加写入  
+	static int flag = 1;
+	std::ofstream mapFile;
+
+	if (flag > 0)
+	{
+		mapFile.open(mapFileName.c_str(), std::ios::out);
+	}
+	else
+	{
+		mapFile.open(mapFileName.c_str(), std::ios::out | std::ios::app);
+	}
+	flag = 0;
+
+	if (!mapFile.is_open())
+	{
+		std::cout << "error " << mapFileName.c_str() << std::endl;
+		mapFile.close();
+	}
+	mapFile << buf.c_str() << std::endl;
+	mapFile.close();
+}
+
+void rotateMap90(std::vector<std::vector<wordMapPoint>> &srcSameWordMap, std::vector<std::vector<wordMapPoint>> &destSameWordMap)
+{
+	//顺时针 旋转90度
+	int rotateRange = 1;
+	int srcMatrRow, srcMatrCol;
+
+	srcMatrRow = srcSameWordMap.size();
+	srcMatrCol = srcSameWordMap[0].size();
+
+	int destMatrRow, dsetMatrCol;
+
+	//反转
+	destMatrRow = srcMatrCol;
+	dsetMatrCol = srcMatrRow;
+
+	vector<std::vector<wordMapPoint>>().swap(destSameWordMap);
+
+	for (int i = 0; i < destMatrRow; ++i)
+	{
+		std::vector<wordMapPoint> tempMap;
+		tempMap.resize(dsetMatrCol);
+		destSameWordMap.push_back(tempMap);
+	}
+
+	for (int i = 0; i < srcMatrRow; ++i)
+	{
+		for (int j = 0; j < srcMatrCol; ++j)
+		{
+			destSameWordMap[j][srcMatrRow - i - 1] = srcSameWordMap[i][j];
+		}
+	}
+}
+
+void rotateMap(int rotateRange, std::vector<std::vector<wordMapPoint>> &txtSameWordMap)
+{
+	std::vector<std::vector<wordMapPoint>> destSameWordMap;
+	std::vector<std::vector<wordMapPoint>> tempSameWordMap;
+
+	rotateRange = rotateRange % 4;
+
+	copyVector(txtSameWordMap, tempSameWordMap);
+
+	for (int i = 0; i <= rotateRange; ++i)
+	{
+		rotateMap90(tempSameWordMap, destSameWordMap);
+
+		copyVector(destSameWordMap, tempSameWordMap);
+	}
+
+	copyVector(destSameWordMap, txtSameWordMap);
+
+}
+
+void getOhterTxtMap(std::string mapFileName) {
+	//将原始地图分别旋转90 180 270 后 输出至文件中
+
+	int rotateRange = 0;
+
+	for (int i = 0; i < 4; ++i)
+	{
+		std::vector<std::vector<wordMapPoint>> txtSameWordMap;
+
+		readTxtMap(mapFileName, txtSameWordMap);
+		rotateRange = i;
+		rotateMap(rotateRange, txtSameWordMap);
+
+		std::string path = mapFileName.substr(0, mapFileName.rfind(".")) + "_" + std::to_string(rotateRange) + ".txt";
+		writeTxtMap(path, txtSameWordMap);
+	}
+}
+
+mapSearch::mapSearch()
+{
+	roateNum = 0;
+}
+
+
+void mapSearch::readTxtMap(std::string mapFileName)
+{
+	std::ifstream mapFile(mapFileName.c_str(), std::ios::in);
+
+	if (!mapFile.is_open())
+	{
+		std::cout << "error " << mapFileName.c_str() << std::endl;
+		mapFile.close();
+	}
+	char buffer[bufferLen] = { 0 };
+	std::string mapContent;
+
+	int i = 0;
+	while (!mapFile.eof())
+	{
+		if (mapFile.eof()) break;
+		mapFile >> buffer;
+
+		mapContent = buffer;
+		std::vector<wordMapPoint> wordMapRow;
+		for (int j = 0; j < mapContent.length(); ++j)
+		{
+			wordMapPoint wordMap;
+			//# o x + -
+			if (mapContent[j] == MAP_NONE_SYMBOL)
+			{
+				wordMap.ptAttrib = WALL_POINT;
+				wordMap.ptColour = NONE_COLOUR;
+			}
+			if (mapContent[j] == MAP_NORMAL_BLACK)
+			{
+				wordMap.ptAttrib = NORMAL_POINT;
+				wordMap.ptColour = BLACK_COLOUR;
+			}
+			if (mapContent[j] == MAP_NORMAL_WHITE)
+			{
+				wordMap.ptAttrib = NORMAL_POINT;
+				wordMap.ptColour = WHITE_COLOUR;
+			}
+			if (mapContent[j] == MAP_START_WHITE)
+			{
+				wordMap.ptAttrib = START_POINT;
+				wordMap.ptColour = WHITE_COLOUR;
+			}
+			if (mapContent[j] == MAP_START_BLACK)
+			{
+				wordMap.ptAttrib = START_POINT;
+				wordMap.ptColour = BLACK_COLOUR;
+			}
+			wordMap.letter = mapContent[j];
+			wordMap.x = i;
+			wordMap.y = j;
+			wordMapRow.push_back(wordMap);
+		}
+		i++;
+		txtSameWordMap.push_back(wordMapRow);
 	}
 	mapFilePath = mapFileName;
 	mapFile.close();
+
+	copyVector(txtSameWordMap, sameWordMap);
 }
+
+void mapSearch::rotateMap90(std::vector<std::vector<wordMapPoint>> &srcSameWordMap, std::vector<std::vector<wordMapPoint>> &destSameWordMap)
+{
+	//顺时针 旋转90度
+	int rotateRange = 1;
+	int srcMatrRow, srcMatrCol;
+
+	srcMatrRow = srcSameWordMap.size();
+	srcMatrCol = srcSameWordMap[0].size();
+
+	int destMatrRow, dsetMatrCol;
+
+	//反转
+	destMatrRow = srcMatrCol;
+	dsetMatrCol = srcMatrRow;
+
+	vector<std::vector<wordMapPoint>>().swap(destSameWordMap);
+
+	for (int i = 0; i < destMatrRow; ++i)
+	{
+		std::vector<wordMapPoint> tempMap;
+		tempMap.resize(dsetMatrCol);
+		destSameWordMap.push_back(tempMap);
+	}
+
+	for (int i = 0; i < srcMatrRow; ++i)
+	{
+		for (int j = 0; j < srcMatrCol; ++j)
+		{
+			destSameWordMap[j][srcMatrRow - i - 1] = srcSameWordMap[i][j];
+		}
+	}
+
+}
+
+
+void mapSearch::rotateMap(int rotateRange)
+{
+	std::vector<std::vector<wordMapPoint>> destSameWordMap;
+
+	++rotateRange;
+	rotateRange = rotateRange % 4;
+
+	std::vector<std::vector<wordMapPoint>> tempSameWordMap;
+	//
+	copyVector(txtSameWordMap, destSameWordMap);
+	copyVector(txtSameWordMap, tempSameWordMap);
+
+	for (int i = 0; i < rotateRange; ++i)
+	{
+		rotateMap90(tempSameWordMap, destSameWordMap);
+		copyVector(destSameWordMap, tempSameWordMap);
+	}
+	copyVector(destSameWordMap, sameWordMap);
+}
+
+
+
 
 mapSearch::mapSearch(std::string mapFileName)
 {
@@ -76,7 +340,7 @@ mapSearch::mapSearch(std::string mapFileName)
 
 void mapSearch::showMap(std::vector<std::vector<wordMapPoint>> sameWordMapTemp)
 {
-	// ☉ ⊚  ⦿⊚ ◯● ⓪ ⓿
+	// 
 	for (int i = 0; i < sameWordMapTemp.size(); ++i)
 	{
 		for (int j = 0; j < sameWordMapTemp[i].size(); ++j)
@@ -87,7 +351,7 @@ void mapSearch::showMap(std::vector<std::vector<wordMapPoint>> sameWordMapTemp)
 			}
 			if (sameWordMapTemp[i][j].letter == MAP_NORMAL_BLACK)
 			{
-				std::cout << "●";
+				std::cout << "* ";
 			}
 			if (sameWordMapTemp[i][j].letter == MAP_NORMAL_WHITE)
 			{
@@ -99,7 +363,7 @@ void mapSearch::showMap(std::vector<std::vector<wordMapPoint>> sameWordMapTemp)
 			}
 			if (sameWordMapTemp[i][j].letter == MAP_START_BLACK)
 			{
-				std::cout << "* ";
+				std::cout << "s ";
 			}
 		}
 		std::cout << std::endl;
@@ -109,7 +373,7 @@ void mapSearch::showMap(std::vector<std::vector<wordMapPoint>> sameWordMapTemp)
 }
 
 
-bool mapSearch::checkEdge(int x, int y, std::vector<wordMapPoint> walkWay) // 边界条件和约束条件的判断
+bool mapSearch::checkEdge(int x, int y, std::vector<wordMapPoint> &walkWay) // 边界条件和约束条件的判断
 {
 	// 不是墙壁 不在已有范围内
 	if ((sameWordMap.size() <= x) || (sameWordMap[0].size() <= y))
@@ -130,7 +394,7 @@ bool mapSearch::checkEdge(int x, int y, std::vector<wordMapPoint> walkWay) // �
 	else // 与约束条件冲突
 		return 0;
 }
-bool mapSearch::checkEnd(std::vector<std::vector<wordMapPoint>> sameWordMapTemp)
+bool mapSearch::checkEnd(std::vector<std::vector<wordMapPoint>> &sameWordMapTemp)
 {
 	//判断是否结束  全部同一种颜色
 	int tempColour = NONE_COLOUR;
@@ -159,74 +423,25 @@ bool mapSearch::checkEnd(std::vector<std::vector<wordMapPoint>> sameWordMapTemp)
 
 }
 
-//void mapSearch::dfs(std::vector<std::vector<wordMapPoint>> sameWordMapTemp, wordMapPoint pos, std::vector<wordMapPoint> walkWay, std::vector<wordMapStartPoint> startPosList)
-//{
-//	walkWay.push_back(pos);
-//
-//	if (isFind)
-//	{
-//		return;
-//	}
-//
-//	int i = 0;
-//	for (i = 0; i < 4; i++)
-//	{
-//		int newPosX, newPosY;
-//		newPosX = pos.x + dir[i][0];
-//		newPosY = pos.y + dir[i][1];
-//		if (checkEdge(newPosX, newPosY,walkWay)) // 按照规则生成下一个节点
-//		{
-//			std::string strDirect = int2Direct(dir[i]);
-//			//反转颜色
-//			sameWordMapTemp[newPosX][newPosY].ptColour *= (-1);
-//
-//			if (checkEnd(sameWordMapTemp)) // 出现目标
-//			{
-//				//...... // 做相应处理
-//				//showMapWayDynamic(wayList);
-//				isFind = true;
-//				return;
-//			}
-//			showMapWay(walkWay);
-//
-//			wordMapStartPoint nextStartPos;
-//			//是否有下一个起点
-//			if (startPosList.size() > 0)
-//			{
-//				nextStartPos =* startPosList.end();
-//				startPosList.pop_back();
-//				sameWordMapTemp[nextStartPos.x][nextStartPos.y].ptColour *= (-1);
-//				dfs(sameWordMapTemp, nextStartPos, walkWay, startPosList);
-//			}
-//			else
-//			{
-//				dfs(sameWordMapTemp, sameWordMapTemp[newPosX][newPosY], walkWay, startPosList);	
-//			}
-//			//walkWay.pop_back();
-//			sameWordMapTemp[newPosX][newPosY].ptColour *= (-1);
-//
-//		/*	piont pos;
-//			pos.x = x;
-//			pos.y = y;
-//			wayList.push_back(pos);	
-//			dfs(x + dir[i][0], y + dir[i][1], wayList);
-//			wayList.pop_back();*/
-//		}
-//
-//	}
-//	walkWay.pop_back();
-//	return; // 没有下层搜索节点，回溯
-//
-//}
 
+long int countDfs = 0;
 int f = 0;
+int maxLeve = 0;
 
 void mapSearch::dfs(std::vector<std::vector<wordMapPoint>> sameWordMapTemp, wordMapPoint pos, std::vector<wordMapStartPoint> startPosList, int startPtID)
 {
 	startPosList[startPtID].walkWay.push_back(pos);
-	//	walkWay.push_back(pos);
+	if (f > maxLeve)
+	{
+		maxLeve = f;
+	}
 	f++;
+	++countDfs;
 	if (isFind)
+	{
+		return;
+	}
+	if (g_stop_run)
 	{
 		return;
 	}
@@ -239,21 +454,34 @@ void mapSearch::dfs(std::vector<std::vector<wordMapPoint>> sameWordMapTemp, word
 		newPosY = pos.y + dir[i][1];
 		if (checkEdge(newPosX, newPosY, startPosList[startPtID].walkWay)) // 按照规则生成下一个节点
 		{
+			if (startPosList.size() <= startPtID + 1)
+			{
+				//		如果是最后一个起点的，应该只走颜色相同的路线
+				//		走过的点会变色 ，所以 应该寻找颜色不同的
+				if (sameWordMapTemp[pos.x][pos.y].ptColour == sameWordMapTemp[newPosX][newPosY].ptColour)
+				{
+					continue;
+				}
+			}
 			std::string strDirect = int2Direct(dir[i]);
 			startPosList[startPtID].walkDirect.push_back(strDirect);
 
 			//反转颜色
 			sameWordMapTemp[newPosX][newPosY].ptColour *= (-1);
 
-			if (checkEnd(sameWordMapTemp)) // 出现目标
+			if (startPosList.size() <= startPtID + 1)
 			{
-				//...... // 做相应处理
-				//showMapWayDynamic(wayList);
-				std::cout << "find ！" << std::endl;
-				showResult(startPosList);
-				saveResult(startPosList);
-				isFind = true;
-				return;
+				//最后一个起点时 才判断颜色
+				if (checkEnd(sameWordMapTemp)) // 出现目标
+				{	isFind = true;
+					g_stop_run = true;
+					Sleep(100);
+					std::cout << "find ！" << roateNum << std::endl;
+					showResult(startPosList);
+					saveResult(startPosList);
+				
+					return;
+				}
 			}
 			wordMapStartPoint nextStartPos;
 			//是否有下一个起点
@@ -270,7 +498,7 @@ void mapSearch::dfs(std::vector<std::vector<wordMapPoint>> sameWordMapTemp, word
 				dfs(sameWordMapTemp, sameWordMapTemp[newPosX][newPosY], startPosList, startPtID);
 				sameWordMapTemp[newPosX][newPosY].ptColour *= (-1);
 			}
-			f--;
+
 			if (startPosList[startPtID].walkDirect.size() > 0)
 			{
 				startPosList[startPtID].walkDirect.pop_back();
@@ -286,7 +514,7 @@ void mapSearch::dfs(std::vector<std::vector<wordMapPoint>> sameWordMapTemp, word
 	{
 		startPosList[startPtID].walkWay.pop_back();
 	}
-
+	f--;
 	return; // 没有下层搜索节点，回溯
 }
 
@@ -294,6 +522,7 @@ void mapSearch::showResult(std::vector<wordMapStartPoint> startPosList)
 {
 	for (int i = 0; i < startPosList.size(); ++i)
 	{
+		std::cout << "(" << i << ") ";
 		for (int j = 0; j < startPosList[i].walkDirect.size(); ++j)
 		{
 			std::cout << " " << startPosList[i].walkDirect[j].c_str();
@@ -313,7 +542,7 @@ void mapSearch::saveResult(std::vector<wordMapStartPoint> startPosList)
 
 	if (!fileWrite.is_open())
 	{
-		std::cout<< "  saveResult error !!! " << endl;
+		std::cout << "  saveResult error !!! " << endl;
 		return;
 	}
 	for (int i = 0; i < startPosList.size(); ++i)
@@ -368,7 +597,6 @@ void mapSearch::search()
 				startPos.x = sameWordMap[i][j].x;
 				startPos.y = sameWordMap[i][j].y;
 				startPos.letter = sameWordMap[i][j].letter;
-
 				startPosList.push_back(startPos);
 			}
 		}
@@ -376,13 +604,15 @@ void mapSearch::search()
 	int startPtID = 0;
 	wordMapStartPoint firstStartPt = startPosList[startPtID];
 
-	//startPosList.erase(startPosList.begin());
-
+	//反转第一个起点颜色
 	sameWordMap[firstStartPt.x][firstStartPt.y].ptColour *= (-1);
 
 	dfs(sameWordMap, firstStartPt, startPosList, startPtID);
 
-
+	if (!isFind)
+	{
+			std::cout << "search end " << std::endl; 
+	}
 
 }
 

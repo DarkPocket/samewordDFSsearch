@@ -91,3 +91,7 @@ $RECYCLE.BIN/
 *.log
 *.idb
 *.db-wal
+*.opendb
+sameWord/Release/mapdataest.txt
+sameWord/Release/mapdataTest_answer.txt
+sameWord/sameWord/0.txt

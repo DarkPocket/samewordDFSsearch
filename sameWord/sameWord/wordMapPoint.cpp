@@ -5,6 +5,11 @@
 
 wordMapPoint::wordMapPoint()
 {
+	 ptColour=0;
+	 ptAttrib=0;
+	 x=0;
+	 y=0;
+	 letter='\0';
 }
 
 
